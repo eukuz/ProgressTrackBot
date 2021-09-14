@@ -25,6 +25,23 @@ def calculateN(n_completed, n_full, data):
         return n_completed - 1 if n_completed > 0 else 0
 
 
+def make_progress_inline_kb(callback):
+    return InlineKeyboardMarkup().row(InlineKeyboardButton('-', callback_data='-' + callback),
+                                      InlineKeyboardButton(strings.nums, callback_data=strings.nums + callback),
+                                      InlineKeyboardButton(strings.trash, callback_data=strings.trash + callback),
+                                      InlineKeyboardButton('+', callback_data='+' + callback))
+
+
+def make_ensure_deletion_kb(chat_id, message_id, process_id):
+    callback = '_{0}_{1}_{2}'.format(chat_id, message_id, process_id)
+    return InlineKeyboardMarkup().row(InlineKeyboardButton(text='👍', callback_data=strings.delete + callback),
+                                      InlineKeyboardButton(text='👎', callback_data=strings.save + callback))
+
+
+def format_id(process_id):
+    return {'_id': ObjectId(process_id)}
+
+
 def main():
     client = pymongo.MongoClient(CONNECTION)
     db = client[DB]
@@ -45,29 +62,53 @@ def main():
         if progresses is not None:
             for progress in progresses:
                 callback = '_{0}_{1}_{2}'.format(msg.from_user.id, (msg.message_id + i), progress['_id'])
-                kb = InlineKeyboardMarkup().row(InlineKeyboardButton('-', callback_data='-' + callback),
-                                                InlineKeyboardButton('+', callback_data='+' + callback))
-                await bot.send_message(msg.from_user.id, progress_format(progress), reply_markup=kb)
+                await bot.send_message(msg.from_user.id, progress_format(progress),
+                                       reply_markup=make_progress_inline_kb(callback))
                 i += 1
+
+    @dp.callback_query_handler(state=States.waiting)
+    async def proceed_deletion(call: types.CallbackQuery):
+        data = call.data.split('_')
+        search = format_id(data[3])
+        progress = col.find_one(search)
+        p_format = progress_format(progress)
+        if data[0] == strings.delete:
+            col.delete_one(search)
+            await bot.delete_message(chat_id=data[1], message_id=data[2])
+            await bot.answer_callback_query(callback_query_id=call.id, text=strings.WAS_DELETED.format(p_format))
+        elif data[0] == strings.save:
+            await bot.answer_callback_query(callback_query_id=call.id, text=strings.WONT_BE_DELETED.format(p_format))
+
+        await bot.delete_message(chat_id=data[1], message_id=call.message.message_id)
+        await States.default.set()
 
     @dp.callback_query_handler(state='*')
     async def proceed_callback(call: types.CallbackQuery):
         data = call.data.split('_')
         callback = '_{1}_{2}_{3}'.format(data[0], data[1], data[2], data[3])
-        kb = InlineKeyboardMarkup().row(InlineKeyboardButton('-', callback_data='-' + callback),
-                                        InlineKeyboardButton('+', callback_data='+' + callback))
-        search = {'_id': ObjectId(data[3])}
+        search = format_id(data[3])
         progress = col.find_one(search)
-        n = calculateN(progress['n_completed'], progress['n_full'], data)
-        if progress['n_completed'] != n:
-            col.update_one(search, {'$set': {'n_completed': n}})
-            progress['n_completed'] = n
-            await bot.edit_message_text(chat_id=data[1], message_id=data[2], text=progress_format(progress),
-                                        reply_markup=kb)
-        elif n == 0:
-            await bot.answer_callback_query(callback_query_id=call.id, text=strings.PROHIBITED_LTZ)
-        else:
-            await bot.answer_callback_query(callback_query_id=call.id, text=strings.CONGRATS_DONE)
+        if data[0] == '-' or data[0] == '+':
+            n = calculateN(progress['n_completed'], progress['n_full'], data)
+            if progress['n_completed'] != n:
+                col.update_one(search, {'$set': {'n_completed': n}})
+                progress['n_completed'] = n
+                await bot.edit_message_text(chat_id=data[1], message_id=data[2], text=progress_format(progress),
+                                            reply_markup=make_progress_inline_kb(callback))
+                await bot.answer_callback_query(callback_query_id=call.id, text=strings.smile)
+            elif n == 0:
+                await bot.answer_callback_query(callback_query_id=call.id, text=strings.PROHIBITED_LTZ)
+            else:
+                await bot.answer_callback_query(callback_query_id=call.id, text=strings.CONGRATS_DONE)
+
+        elif data[0] == '🔢':
+            await bot.answer_callback_query(callback_query_id=call.id,
+                                            text="УСТАНОВКА КОЛ-ВА ПРОЙДЕННЫХ ЭЛЕМНТОВ В РАЗРАБОТКЕ!")
+        elif data[0] == '🗑️':
+            await bot.answer_callback_query(callback_query_id=call.id, text=strings.ENSURE)
+            await bot.send_message(chat_id=data[1], text=strings.ENSURE_DELETING + progress_format(progress),
+                                   reply_markup=make_ensure_deletion_kb(data[1], data[2], data[3]))
+            await States.waiting.set()
 
     @dp.message_handler(lambda msg: msg.text == strings.CREATE_PROGRESS, state=['*'])
     async def create_progress(msg: types.Message):
@@ -122,7 +163,7 @@ def main():
         data = await state.get_data()
         data['user_id'] = msg.from_user.id
         data['n_completed'] = 0
-        await msg.answer(strings.CREATED.format(data['name'], data['n_full'], data['deadline'],data['priority']))
+        await msg.answer(strings.CREATED.format(data['name'], data['n_full'], data['deadline'], data['priority']))
         col.insert_one(data)
         await States.default.set()
 
