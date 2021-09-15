@@ -175,9 +175,15 @@ def main():
                 await bot.answer_callback_query(callback_query_id=call.id, text=strings.CONGRATS_DONE)
 
         elif control_char == strings.nums:
+            current_state = await state.get_state()
+            data = await state.get_data()
+            if current_state == States.setting_n.state:
+                await bot.delete_message(chat_id,data['delete_to'])
+
             await bot.answer_callback_query(callback_query_id=call.id)
-            await bot.send_message(chat_id=chat_id, text=strings.SET_N.format(progress_format(progress)))
+            num_msg = await bot.send_message(chat_id=chat_id, text=strings.SET_N.format(progress_format(progress)))
             await state.update_data(progress_id_to_set_n=process_id)
+            await state.update_data(delete_to=num_msg.message_id)
             await States.setting_n.set()
 
         elif control_char == strings.trash:
