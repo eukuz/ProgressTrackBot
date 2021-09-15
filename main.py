@@ -45,8 +45,8 @@ def format_id(process_id):
 
 async def deleteMessages(state, msg, bot):
     data = await state.get_data()
-    if 'delete_list_from' and 'delete_to' in data:
-        for j in range(data['delete_list_from'],data['delete_to']):
+    if 'delete_from' and 'delete_to' in data:
+        for j in range(data['delete_from'], data['delete_to']):
             try:
                 await bot.delete_message(msg.chat.id, j)
             except MessageToDeleteNotFound:
@@ -70,7 +70,7 @@ def main():
     async def get_progresses(msg: types.Message, state: FSMContext):
         await deleteMessages(state, msg, bot)
         i = 1
-        await state.update_data(delete_list_from=msg.message_id)
+        await state.update_data(delete_from=msg.message_id)
         progresses = col.find({"user_id": msg.from_user.id}).sort("priority", -1)
         if progresses is not None:
             for progress in progresses:
@@ -78,7 +78,7 @@ def main():
                 await bot.send_message(msg.from_user.id, progress_format(progress),
                                        reply_markup=make_progress_inline_kb(callback))
                 i += 1
-        await state.update_data(delete_to=msg.message_id+i)
+        await state.update_data(delete_to=msg.message_id + i)
 
     @dp.callback_query_handler(state=States.waiting)
     async def proceed_deletion(call: types.CallbackQuery):
@@ -133,14 +133,14 @@ def main():
 
     @dp.message_handler(state=States.name, content_types=['text'])
     async def name_chosen(msg: types.Message, state: FSMContext):
-        await state.update_data(delete_to=msg.message_id+2)
+        await state.update_data(delete_to=msg.message_id + 2)
         await state.update_data(name=msg.text)
         await msg.answer(strings.INPUT_NUMBER_OF_ELEMENTS)
         await States.next()
 
     @dp.message_handler(state=States.n_full, content_types=['text'])
     async def n_chosen(msg: types.Message, state: FSMContext):
-        await state.update_data(delete_to=msg.message_id+2)
+        await state.update_data(delete_to=msg.message_id + 2)
         try:
             n = int(msg.text)
             if n < 0:
@@ -156,7 +156,7 @@ def main():
 
     @dp.message_handler(state=States.deadline, content_types=['text'])
     async def deadline_chosen(msg: types.Message, state: FSMContext):
-        await state.update_data(delete_to=msg.message_id+2)
+        await state.update_data(delete_to=msg.message_id + 2)
         try:
             d = datetime.strptime(msg.text, strings.DATE_FORMAT)
         except ValueError:
@@ -169,7 +169,7 @@ def main():
 
     @dp.message_handler(state=States.priority, content_types=['text'])
     async def priority_chosen(msg: types.Message, state: FSMContext):
-        await state.update_data(delete_to=msg.message_id+2)
+        await state.update_data(delete_to=msg.message_id + 2)
         try:
             p = int(msg.text)
             if p < 0 or p > 100:
@@ -180,15 +180,14 @@ def main():
             return
 
         await state.update_data(priority=p)
-        data = await state.get_data()
-        d = data.copy()
+        d = dict(await state.get_data())
+        for i in range(d['delete_from'], msg.message_id + 1):
+            await bot.delete_message(msg.chat.id, i)
+
         d['user_id'] = msg.from_user.id
-        d['n_completed'] = 0
-        delete_id = d['delete_from']
         d.pop('delete_from')
         d.pop('delete_to')
-        for i in range(delete_id, msg.message_id + 1):
-            await bot.delete_message(msg.chat.id, i)
+        d['n_completed'] = 0
 
         await msg.answer(strings.CREATED.format(d['name'], d['n_full'], d['deadline'], d['priority']))
         col.insert_one(d)
