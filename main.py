@@ -1,3 +1,4 @@
+import math
 from datetime import date, timedelta, datetime
 
 import pymongo as pymongo
@@ -15,8 +16,34 @@ import strings
 from config import TOKEN, HOST, PORT, DB, COLLECTION, CONNECTION
 
 
+def make_progress_bar(n: int, m: int):
+    percent = round(n / m * 100, 2)
+    tens = int(percent // 10) * 2
+    fulls = strings.one * tens
+    halves = 1 if percent % 10 != 0 else 0
+    half = (strings.half1 + strings.half2) * halves
+    zeros = strings.zero * (20 - tens - halves - (1 * halves))
+    return fulls + half + zeros
+
+
 def progress_format(progress):
-    return strings.PROGRESS.format(progress['name'], progress['n_full'], progress['n_completed'])
+    deadline = progress['deadline']
+    days_left = (deadline - datetime.today()).days
+    n = progress['n_completed']
+    m = progress['n_full']
+
+    if n == m:
+        deadline_info = strings.CONGRATS_DONE_MSG
+    elif days_left < -1:
+        deadline_info = strings.OVERDUE.format(datetime.strftime(deadline, strings.DATE_FORMAT))
+    elif days_left == -1:
+        deadline_info = strings.DEADLINE_TODAY
+    else:
+        per_day = math.ceil((m - n) / days_left)
+        per_week = math.ceil((m - n) / (days_left / 7))
+        deadline_info = strings.PER_DAY.format(per_week, per_day, make_progress_bar(n, m))
+
+    return strings.PROGRESS.format(progress['name'], m, n, deadline_info)
 
 
 def calculateN(n_completed, n_full, data):
@@ -35,8 +62,8 @@ def make_progress_inline_kb(callback):
 
 def make_ensure_deletion_kb(chat_id, message_id, process_id):
     callback = '_{0}_{1}_{2}'.format(chat_id, message_id, process_id)
-    return InlineKeyboardMarkup().row(InlineKeyboardButton(text='👍', callback_data=strings.delete + callback),
-                                      InlineKeyboardButton(text='👎', callback_data=strings.save + callback))
+    return InlineKeyboardMarkup().row(InlineKeyboardButton(text='✅', callback_data=strings.delete + callback),
+                                      InlineKeyboardButton(text='❌', callback_data=strings.save + callback))
 
 
 def format_id(process_id):
@@ -109,7 +136,7 @@ def main():
                 progress['n_completed'] = n
                 await bot.edit_message_text(chat_id=data[1], message_id=data[2], text=progress_format(progress),
                                             reply_markup=make_progress_inline_kb(callback))
-                await bot.answer_callback_query(callback_query_id=call.id, text=strings.smile)
+                await bot.answer_callback_query(callback_query_id=call.id)
             elif n == 0:
                 await bot.answer_callback_query(callback_query_id=call.id, text=strings.PROHIBITED_LTZ)
             else:
