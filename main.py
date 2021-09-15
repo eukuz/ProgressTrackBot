@@ -128,6 +128,7 @@ def main():
     async def create_progress(msg: types.Message, state: FSMContext):
         await deleteMessages(state, msg, bot)
         await state.update_data(delete_from=msg.message_id)
+        await state.update_data(delete_to=msg.message_id + 2)
         await msg.reply(strings.INPUT_NAME)
         await States.name.set()
 
