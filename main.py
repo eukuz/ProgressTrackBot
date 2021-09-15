@@ -113,23 +113,32 @@ def main():
     async def proceed_deleting(call: types.CallbackQuery, state: FSMContext):
         control_char, chat_id, msg_id, progress_id = call.data.split('_')
         data = await state.get_data()
-        if control_char == strings.trash:
+        current_state = await state.get_state()
+
+        if control_char == strings.nums:
             await bot.delete_message(chat_id, message_id=data['delete_to'])
             await States.default.set()
             await proceed_callback(call, state)
-            return
-        search = format_id(progress_id)
-        progress = col.find_one(search)
-        p_format = progress_format(progress)
-        if control_char == strings.delete:
-            col.delete_one(search)
-            await bot.delete_message(chat_id=chat_id, message_id=msg_id)
-            await bot.answer_callback_query(callback_query_id=call.id, text=strings.WAS_DELETED.format(p_format))
-        elif control_char == strings.save:
-            await bot.answer_callback_query(callback_query_id=call.id, text=strings.WONT_BE_DELETED.format(p_format))
 
-        await bot.delete_message(chat_id=chat_id, message_id=call.message.message_id)
-        await States.default.set()
+        elif control_char == strings.trash:
+            await bot.delete_message(chat_id, message_id=data['delete_to'])
+            await States.default.set()
+            await proceed_callback(call, state)
+
+        else:
+            search = format_id(progress_id)
+            progress = col.find_one(search)
+            p_format = progress_format(progress)
+            if control_char == strings.delete:
+                col.delete_one(search)
+                await bot.delete_message(chat_id=chat_id, message_id=msg_id)
+                await bot.answer_callback_query(callback_query_id=call.id, text=strings.WAS_DELETED.format(p_format))
+            elif control_char == strings.save:
+                await bot.answer_callback_query(callback_query_id=call.id,
+                                                text=strings.WONT_BE_DELETED.format(p_format))
+
+            await bot.delete_message(chat_id=chat_id, message_id=call.message.message_id)
+            await States.default.set()
 
     @dp.message_handler(state=States.setting_n)
     async def proceed_setting_n(msg: types.Message, state: FSMContext):
@@ -161,6 +170,9 @@ def main():
         callback = call.data[1:]
         search = format_id(process_id)
         progress = col.find_one(search)
+        current_state = await state.get_state()
+        data = await state.get_data()
+
         if control_char == '-' or control_char == '+':
             n = calculateN(progress['n_completed'], progress['n_full'], control_char)
             if progress['n_completed'] != n:
@@ -175,10 +187,8 @@ def main():
                 await bot.answer_callback_query(callback_query_id=call.id, text=strings.CONGRATS_DONE)
 
         elif control_char == strings.nums:
-            current_state = await state.get_state()
-            data = await state.get_data()
             if current_state == States.setting_n.state:
-                await bot.delete_message(chat_id,data['delete_to'])
+                await bot.delete_message(chat_id= chat_id, message_id=data['delete_to'])
 
             await bot.answer_callback_query(callback_query_id=call.id)
             num_msg = await bot.send_message(chat_id=chat_id, text=strings.SET_N.format(progress_format(progress)))
@@ -187,6 +197,9 @@ def main():
             await States.setting_n.set()
 
         elif control_char == strings.trash:
+            if current_state == States.setting_n.state:
+                await bot.delete_message(chat_id, message_id=data['delete_to'])
+
             await bot.answer_callback_query(callback_query_id=call.id)
             del_msg = await bot.send_message(chat_id=chat_id, text=strings.ENSURE_DELETING + progress_format(progress),
                                              reply_markup=make_ensure_deletion_kb(chat_id, msg_id, process_id))
