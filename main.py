@@ -31,17 +31,19 @@ def progress_format(progress):
     days_left = (deadline - datetime.today()).days
     n = progress['n_completed']
     m = progress['n_full']
-
+    per_day = math.ceil((m - n) / days_left)
+    deadline_formatted = datetime.strftime(deadline, strings.DATE_FORMAT)
     if n == m:
         deadline_info = strings.CONGRATS_DONE_MSG
+    elif days_left <= 7:
+        deadline_info = strings.DO_LTW.format((m - n), deadline_formatted, per_day, make_progress_bar(n, m))
     elif days_left < -1:
-        deadline_info = strings.OVERDUE.format(datetime.strftime(deadline, strings.DATE_FORMAT))
+        deadline_info = strings.OVERDUE.format(deadline_formatted)+"\n"+"/n"+make_progress_bar(n, m)
     elif days_left == -1:
-        deadline_info = strings.DEADLINE_TODAY
+        deadline_info = strings.DEADLINE_TODAY+"\n"+make_progress_bar(n, m)
     else:
-        per_day = math.ceil((m - n) / days_left)
-        per_week = math.ceil((m - n) / (days_left / 7))
-        deadline_info = strings.PER_DAY.format(per_week, per_day, make_progress_bar(n, m))
+        per_week = (m-n) if days_left <= 7 else math.ceil((m - n) / (days_left / 7))
+        deadline_info = strings.DO.format(per_week, per_day, make_progress_bar(n, m))
 
     return strings.PROGRESS.format(progress['name'], m, n, deadline_info)
 
@@ -72,7 +74,6 @@ def format_id(process_id):
 
 async def deleteMessages(state, chat_id, bot):
     data = await state.get_data()
-    print(data)
     if 'delete_from' and 'delete_to' in data:
         for j in range(data['delete_from'], data['delete_to']):
             try:
