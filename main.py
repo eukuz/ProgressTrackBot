@@ -7,7 +7,7 @@ from aiogram.contrib.fsm_storage.mongo import MongoStorage
 from aiogram.dispatcher import Dispatcher, FSMContext
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils import executor
-from aiogram.utils.exceptions import MessageToDeleteNotFound
+from aiogram.utils.exceptions import MessageToDeleteNotFound, MessageCantBeDeleted
 from bson import ObjectId
 
 import keyboards
@@ -33,14 +33,15 @@ def progress_format(progress):
     m = progress['n_full']
     per_day = math.ceil((m - n) / days_left)
     deadline_formatted = datetime.strftime(deadline, strings.DATE_FORMAT)
+
     if n == m:
         deadline_info = strings.CONGRATS_DONE_MSG
-    elif days_left <= 7:
-        deadline_info = strings.DO_LTW.format((m - n), deadline_formatted, per_day, make_progress_bar(n, m))
     elif days_left < -1:
         deadline_info = strings.OVERDUE.format(deadline_formatted)+"\n"+"/n"+make_progress_bar(n, m)
     elif days_left == -1:
         deadline_info = strings.DEADLINE_TODAY+"\n"+make_progress_bar(n, m)
+    elif days_left <= 7:
+        deadline_info = strings.DO_LTW.format((m - n), deadline_formatted, per_day, make_progress_bar(n, m))
     else:
         per_week = (m-n) if days_left <= 7 else math.ceil((m - n) / (days_left / 7))
         deadline_info = strings.DO.format(per_week, per_day, make_progress_bar(n, m))
@@ -78,8 +79,10 @@ async def deleteMessages(state, chat_id, bot):
         for j in range(data['delete_from'], data['delete_to']):
             try:
                 await bot.delete_message(chat_id, j)
-            except MessageToDeleteNotFound:
+            except MessageToDeleteNotFound or MessageCantBeDeleted:
                 continue
+
+
 
 
 def main():
